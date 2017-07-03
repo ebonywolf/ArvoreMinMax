@@ -1,9 +1,3 @@
-/*
- * MinMaxTree.h
- *
- *  Created on: 22 de jun de 2017
- *      Author: wagner
- */
 
 #ifndef MINMAXTREE_H_
 #define MINMAXTREE_H_
@@ -12,220 +6,290 @@
 #include <list>
 #include <iostream>
 #include <memory>
+#include <time.h>
 namespace wag
 {
 
 ///just a base structure
 template<class T>
 struct Game {
-    Game() = default;
-    virtual ~Game()
-    {
-    }
-    T getType();
-    virtual bool move( T t )
-    {
-        return 0;
-    }
-    ;
-    virtual int getFitness()
-    {
-        return 0;
-    }
-    ;
-    virtual bool getPlayer()
-    {
-        return 0;
-    }
-    ;
-    virtual std::list<T*> getMoves( int player )
-    {
-    }
-    ;
-    Game<T>* clone()
-    {
-        return new Game();
-    }
-
+	Game() = default;
+	virtual ~Game()
+	{
+	}
+	T getType();
+	virtual bool move ( T t )
+	{
+		return 0;
+	}
+	;
+	virtual int getFitness()
+	{
+		return 0;
+	}
+	;
+	virtual bool getPlayer()
+	{
+		return 0;
+	}
+	;
+	virtual std::list<T*> getMoves ( int player )
+	{
+	}
+	;
+	Game<T>* clone()
+	{
+		return new Game();
+	}
 };
 struct TreeConfig {
 
 };
 
 template<class T>
-class MinMaxTree {
-    using GAME = std::shared_ptr<T>;
-    GAME game;
-    using Movement = decltype ( game->getType() );
+class MinMaxTree
+{
+	public:
+		using GAME = std::shared_ptr<T>;
+		GAME game;
+		using Movement = decltype ( game->getType() );
 
-    unsigned short level = 0;
-    static const bool MIN = false;
-    static const bool MAX = true;
+		unsigned short level = 0;
+		static const bool MIN = false;
+		static const bool MAX = true;
+		static long long cont;
 
 
-    TreeConfig config;
-    struct Node : public std::enable_shared_from_this<Node> {
-        std::unordered_map<Movement*, std::shared_ptr<Node> > sons;
-        GAME game;
-        bool type = 0;
-        int fitness = 0;
-        unsigned short level = 0;
-        Movement* mov;
-        std::weak_ptr<Node> dad;
-        bool deleted = 0;
+		TreeConfig config;
+		struct Node : public std::enable_shared_from_this<Node> {
+			std::unordered_map<Movement*, std::shared_ptr<Node> > sons;
+			std::weak_ptr<Node> dad;
+			GAME game;
+			bool type = 0;
+			short fitness = 0;
+			short trueFitness = 0;
+			int level = 0;
+			Movement* mov;
+			Movement* root;
 
-        Node()
-        {
-        }
-        Node( Node* d , bool type , GAME game , int fit ) :
-                type( type ), game( game ), fitness( fit )
-        {
-            dad = d->shared_from_this();
-        }
-        ~Node()
-        {
-            //    std::cout<< "deleted:"<<std::endl;
-        }
-        void deleteSons()
-        {
-            deleted = true;
-            for ( auto it : sons ) {
-                it.second->deleteSons();
-            }
+			Node()
+			{
+				cont++;
+			}
+			Node ( Node* d , bool type , GAME game , int fit ) :
+				type ( type ), game ( game ), fitness ( fit ), trueFitness ( fit ), root ( d->root )
+			{
+				dad = d->shared_from_this();
+				cont++;
+			}
+			~Node()
+			{
+				cont--;
 
-        }
-        inline void updateFitness()
-        {
-            int alce = sons.size();
-            // std::cout<< "Size:"<<alce <<std::endl;
-            if ( sons.size() == 0 ) {
-                return;
-            };
-            auto it = sons.begin();
+			}
+			inline void updateFitness()
+			{
+				if ( sons.size() == 0 ) {
+					return;
+				};
+				auto it = sons.begin();
 
-            fitness = it->second->fitness;
-            mov = it->first;
-            for ( auto& it : sons ) {
-                if ( type == MAX ) {
-                    if ( it.second->fitness > fitness ) {
-                        fitness = it.second->fitness;
-                        mov = it.first;
+				fitness = it->second->fitness;
+				mov = it->first;
+				for ( auto& it : sons ) {
+					if ( type == MAX ) {
+						if ( it.second->fitness > fitness ) {
+							fitness = it.second->fitness;
+							mov = it.first;
+						} else if ( it.second->fitness == fitness && it.second->trueFitness > fitness ) {
+							mov = it.first;
+						}
+					} else {
+						if ( it.second->fitness < fitness ) {
+							fitness = it.second->fitness;
+							mov = it.first;
+						} else if ( it.second->fitness == fitness && it.second->trueFitness < fitness ) {
+							mov = it.first;
+						}
+					}
+				}
+
+				if ( !dad.expired() ) {
+					auto alce = dad.lock();
+					alce->updateFitness();
+				}
+
+			}
+			void createSons ( std::list<std::shared_ptr<Node> >& next )
+			{
+				std::list<Movement*> moves = game->getMoves ( type );
+				for ( auto movement : moves ) {
+					T* alce = static_cast<T*> ( game->clone() );
+					GAME future = GAME ( alce );
+					future->move ( *movement );
+
+					int fit = future->getFitness();
+
+					std::shared_ptr<Node> novoson = std::shared_ptr<Node> ( new Node ( this , !type , future , fit ) );
+
+					sons[movement] = novoson;
+					next.push_back ( novoson );
+				}
+				if ( sons.size() > 0 ) {
+					//
+					updateFitness();
+					game.reset();
+				}
+
+			}
+			void firstUpdate ( std::unordered_map<Movement*, std::list<std::shared_ptr<Node>>>& next )
+			{
+
+				std::list<Movement*> moves = game->getMoves ( type );
+
+				for ( auto movement : moves ) {
+
+					T* alce = static_cast<T*> ( game->clone() );
+					GAME future = GAME ( alce );
+					future->move ( *movement );
+
+					int fit = future->getFitness();
+
+					std::shared_ptr<Node> novoson = std::shared_ptr<Node> ( new Node ( this , !type , future , fit ) );
+					novoson->root = movement;
+					sons[movement] = novoson;
+					next[movement].push_back ( novoson );
+				}
+				if ( sons.size() > 0 ) {updateFitness();}//TODO :novo update
+				game.reset();
+			}
+			void updateRoot ( Movement* novoRoot, bool first = 0 )
+			{
+				root = novoRoot;
+				if ( !first ) {
+					for ( auto& it : sons ) {
+						it.second->updateRoot ( novoRoot );
+					}
+				} else { ///first
+					for ( auto& it : sons ) {
+						it.second->updateRoot ( it.first );
+					}
+				}
+			}
+
+		};
+		using UpdateMap = std::unordered_map< Movement* , std::list<std::shared_ptr<Node>> >;
+
+		std::shared_ptr<Node> start;
+		//std::list<std::shared_ptr<Node> > nextUpdate;
+		UpdateMap nextUpdate;
+
+	public:
+
+		MinMaxTree()
+		{
+		}
+
+		MinMaxTree ( TreeConfig config ) :
+			config ( config )
+		{
+		}
+		void setGame ( T* g, bool xo=0 )
+		{
+			nextUpdate.clear();
+			start =  std::shared_ptr<Node> ( new Node() );
+			T* alce = static_cast<T*> ( g->clone() );
+			start->game =  GAME ( alce );
+			start->type = !g->getPlayer() ^xo;
+
+			start->firstUpdate ( nextUpdate );
+			// start->updateRoot(0,true );
+		}
+		void update ()
+		{
+
+			for ( auto& it : nextUpdate ) {
+				std::list<std::shared_ptr<Node> >& next = it.second;
+				std::list<std::shared_ptr<Node> > novo;
+				for ( auto& node : next ) {
+					node->createSons ( novo );
+				}
+				next.swap ( novo );
+			}
+
+		}
+		void update (unsigned long int time)
+		{
+
+		    auto tnow = clock();
+
+		    while(true){
+                if(nextUpdate.size()==0){
+
+                   return;
+                }
+                for ( auto& it : nextUpdate ) {
+                    std::list<std::shared_ptr<Node> >& next = it.second; //proximo nodos a atualizar
+                    std::list<std::shared_ptr<Node> > novo;
+                    auto beg = next.begin();
+                    while(beg != next.end() ){//iterating over updates
+                        auto n = *beg;
+                        n->createSons(novo);
+                        auto now = beg;
+                        beg++;
+                        next.erase(now);
+                        if( clock() - tnow >= time ){
+                            next.splice(next.end(), novo);
+                            return;
+                        }
                     }
+                     next.swap ( novo );
                 }
-                else {
-                    if ( it.second->fitness < fitness ) {
-                        fitness = it.second->fitness;
-                        mov = it.first;
-                    }
-                }
-            }
-            if ( !dad.expired() ) {
-                auto alce = dad.lock();
-                alce->updateFitness();
-            }
+                 if( clock() - tnow >= time ){
+                     return;
+                 }
 
-        }
-        void createSons( std::list<std::shared_ptr<Node> >& next )
-        {
-            std::list<Node*> novos;
-            if ( !game ) {
-                std::cout << "Invalid Game" << std::endl;
-            }
-            std::list<Movement*> moves = game->getMoves( type );
+		    }
 
-            for ( auto movement : moves ) {
-                T* alce = static_cast<T*>( game->clone() );
-                GAME future = GAME( alce );
+		}
 
-                future->move( *movement );
+		Movement* getMovement()
+		{
 
-                int fit = future->getFitness();
 
-                std::shared_ptr<Node> novoson = std::shared_ptr<Node>( new Node( this , !type , future , fit ) );
-                //   std::cout<<std::endl<< fit<<" "<<movement;
-                //   std::cout<< *future <<std::endl;
-                sons[movement] = novoson;
-                next.push_back( novoson );
-            }
-            if ( sons.size() > 0 ) {
-                updateFitness();
-            }
-            game.reset();
-        }
+			return start->mov;
+		}
+		void sendCommand ( Movement* m )
+		{
 
-    };
+			std::shared_ptr<Node> next;
+			if ( start->sons.count ( m ) ) {
+				next = start->sons[m];
+			} else {
+				throw "FUUU";
+			}
 
-    std::shared_ptr<Node> start;
-    std::list<std::shared_ptr<Node> > nextUpdate;
-public:
 
-    MinMaxTree()
-    {
-    }
+			auto& lista = nextUpdate[m];
 
-    MinMaxTree( TreeConfig config ) :
-            config( config )
-    {
-    }
-    void setGame( T* g )
-    {
-        game = GAME( g );
+			UpdateMap novoUpdate;
+            if ( next->sons.size() ) { //has sons
+				next->updateRoot ( 0, true );
+				for ( auto& node : lista ) {
+					novoUpdate[ node->root ].push_back ( node );
+				}
 
-        start = std::shared_ptr<Node>( new Node() );
-        T* alce = static_cast<T*>( g->clone() );
-        start->game = GAME( alce );
-        //static_cast<GAME*> ( g->clone() );
+			} else {
+				next->firstUpdate ( novoUpdate );
+			}
 
-        start->type = !game->getPlayer();
-        nextUpdate.push_back( start );
-    }
-    void update()
-    {
-        std::cout << "updating:" << nextUpdate.size() << std::endl;
-        std::list<std::shared_ptr<Node> > next;
-        for ( auto n : nextUpdate ) {
-            if ( !n->deleted ) {
-                n->createSons( next );
-            }
-        }
-        nextUpdate = next;                 //std::move(next);
-    }
-    Movement* getMovement()
-    {
-        std::cout << "Type:" << start->type << std::endl;
-        for ( auto x : start->sons ) {
-            std::cout << x.second->fitness << " ";
-        }
-        std::cout << std::endl;
-        return start->mov;
-    }
-    void sendCommand( Movement* m )
-    {
-        std::shared_ptr<Node> next;
-        if ( start->sons.count( m ) ) {
-            next = start->sons[m];
-        }
-        else {
-            for ( auto& it : start->sons ) {
-                if ( *it.first == *m ) {
-                    next = it.second;
-                    break;
-                }
-            }
-        }
-        if ( next == NULL ) {
-            throw "FUUU";
-        }
-        for ( auto& it : start->sons ) {
-            if ( it.second != next ) {
-                it.second->deleteSons();
-                it.second->deleted = true;
-            }
-        }
-        start->deleted = true;
-        start = next;
-    }
+			nextUpdate = novoUpdate;
+			start = next;
+		}
 };
+template<class T>
+long long MinMaxTree<T>::cont = 0;
+
 
 } /* namespace wag */
 
