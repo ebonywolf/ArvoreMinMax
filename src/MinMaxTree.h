@@ -9,7 +9,6 @@
 #include <time.h>
 namespace wag
 {
-
 ///just a base structure
 template<class T>
 struct Game {
@@ -42,7 +41,24 @@ struct Game {
 		return new Game();
 	}
 };
+template <class T>
+struct OrderedVector{
+
+    std::shared_ptr<T>* nodes;
+
+    OrderedVector(int n){
+        nodes = new  std::shared_ptr<T>[n];
+    }
+    ~OrderedVector(){
+        delete[] nodes;
+    }
+    inline bool compare(std::shared_ptr<T> n1, std::shared_ptr<T> n2){
+        return *n1 < *n2;
+    }
+};
+
 struct TreeConfig {
+
 
 };
 
@@ -51,7 +67,7 @@ class MinMaxTree
 {
 	public:
 		using GAME = std::shared_ptr<T>;
-		GAME game;
+		static GAME game;
 		using Movement = decltype ( game->getType() );
 
 		unsigned short level = 0;
@@ -64,20 +80,20 @@ class MinMaxTree
 		struct Node : public std::enable_shared_from_this<Node> {
 			std::unordered_map<Movement*, std::shared_ptr<Node> > sons;
 			std::weak_ptr<Node> dad;
-			GAME game;
 			bool type = 0;
 			short fitness = 0;
 			short trueFitness = 0;
-			int level = 0;
 			Movement* mov;
 			Movement* root;
+			Movement* transition;
 
 			Node()
 			{
 				cont++;
 			}
-			Node ( Node* d , bool type , GAME game , int fit ) :
-				type ( type ), game ( game ), fitness ( fit ), trueFitness ( fit ), root ( d->root )
+			Node ( Node* d , bool type  , int fit, Movement* transition  ) :
+				type ( type ), fitness ( fit ), trueFitness ( fit ), root ( d->root ),
+				transition( transition )
 			{
 				dad = d->shared_from_this();
 				cont++;
@@ -86,6 +102,26 @@ class MinMaxTree
 			{
 				cont--;
 
+			}
+			bool operator<(const Node& n )const{
+                return this->fitness < n.fitness;
+			}
+			void acquireMoves(std::list<Movement*>& allMoves){
+			    if(!dad.expired()){
+                    auto alce = dad.lock();
+                    allMoves.push_front(transition);
+                    alce->acquireMoves(allMoves);
+			    }
+			}
+			GAME createGame(){
+			    T* alce = static_cast<T*> ( game->clone() );
+                GAME future = GAME ( alce );
+                std::list<Movement*> moveList;
+                acquireMoves(moveList);
+                for(auto x: moveList){
+                    future->move(*x);
+                }
+                return future;
 			}
 			inline void updateFitness()
 			{
@@ -120,48 +156,50 @@ class MinMaxTree
 				}
 
 			}
+
+
 			void createSons ( std::list<std::shared_ptr<Node> >& next )
 			{
-				std::list<Movement*> moves = game->getMoves ( type );
+			    GAME tnow = createGame();
+				std::list<Movement*> moves = tnow->getMoves ( type );
 				for ( auto movement : moves ) {
-					T* alce = static_cast<T*> ( game->clone() );
-					GAME future = GAME ( alce );
+                    T* future = static_cast<T*> ( tnow->clone() );
+                   // GAME future = GAME ( alce );
 					future->move ( *movement );
 
 					int fit = future->getFitness();
 
-					std::shared_ptr<Node> novoson = std::shared_ptr<Node> ( new Node ( this , !type , future , fit ) );
+					std::shared_ptr<Node> novoson = std::shared_ptr<Node> ( new Node ( this , !type , fit, movement ) );
 
 					sons[movement] = novoson;
 					next.push_back ( novoson );
+					delete(future);
 				}
 				if ( sons.size() > 0 ) {
-					//
 					updateFitness();
-					game.reset();
 				}
 
 			}
 			void firstUpdate ( std::unordered_map<Movement*, std::list<std::shared_ptr<Node>>>& next )
 			{
 
-				std::list<Movement*> moves = game->getMoves ( type );
-
+				GAME tnow = createGame();
+				std::list<Movement*> moves = tnow->getMoves ( type );
 				for ( auto movement : moves ) {
+                    T* future = static_cast<T*> ( tnow->clone() );
 
-					T* alce = static_cast<T*> ( game->clone() );
-					GAME future = GAME ( alce );
 					future->move ( *movement );
 
 					int fit = future->getFitness();
 
-					std::shared_ptr<Node> novoson = std::shared_ptr<Node> ( new Node ( this , !type , future , fit ) );
+					std::shared_ptr<Node> novoson = std::shared_ptr<Node> ( new Node ( this , !type  , fit, movement ) );
 					novoson->root = movement;
 					sons[movement] = novoson;
 					next[movement].push_back ( novoson );
+					delete(future);
 				}
 				if ( sons.size() > 0 ) {updateFitness();}//TODO :novo update
-				game.reset();
+
 			}
 			void updateRoot ( Movement* novoRoot, bool first = 0 )
 			{
@@ -199,7 +237,7 @@ class MinMaxTree
 			nextUpdate.clear();
 			start =  std::shared_ptr<Node> ( new Node() );
 			T* alce = static_cast<T*> ( g->clone() );
-			start->game =  GAME ( alce );
+			game =  GAME ( alce );
 			start->type = !g->getPlayer() ^xo;
 
 			start->firstUpdate ( nextUpdate );
@@ -256,7 +294,7 @@ class MinMaxTree
 		Movement* getMovement()
 		{
 
-
+            std::cout<< "Fitness:"<<start->fitness <<std::endl;
 			return start->mov;
 		}
 		void sendCommand ( Movement* m )
@@ -268,6 +306,7 @@ class MinMaxTree
 			} else {
 				throw "FUUU";
 			}
+			game->move( *m );
 
 
 			auto& lista = nextUpdate[m];
@@ -289,6 +328,9 @@ class MinMaxTree
 };
 template<class T>
 long long MinMaxTree<T>::cont = 0;
+
+template<class T>
+std::shared_ptr<T> MinMaxTree<T>::game=std::shared_ptr<T>();
 
 
 } /* namespace wag */
