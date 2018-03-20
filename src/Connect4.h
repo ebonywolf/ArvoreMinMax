@@ -4,82 +4,91 @@
 
 #include <vector>
 #include <unordered_map>
+#include <iostream>
+#include <exception>
 typedef unsigned char uchar;
 
-struct Mov {
-	uchar mov;
-};
-std::unordered_map <int , Mov> moves;
-
-struct Connect: public wag::Game<Mov> {
+struct Connect: public wag::Game {
 
 	uchar board[7][6];
 	uchar height[7] = {0};
 	bool done=0;
 	bool player=0;
-
-	Connect() = default;
+	bool calledFit=0;
+	Connect() =default;
 	Connect ( int a )
 	{
-		for ( int i = 0; i < 7; i++ ) {
-			Mov mov = {i};
-			moves[i] = mov;
-		}
+	    for (int i=0;i<7;i++){
+            for (int j=0;j<6;j++){
+                board[i][j]=0;
+            }
+
+	    }
+
 	}
 	virtual ~Connect()
 	{
+
 	}
-	Mov getType();
-	virtual bool move ( Mov t )
+
+	virtual bool move ( uchar t )
 	{
 
-		board[t.mov][ height[t.mov] ] = player + 1;
-		height[t.mov]++;
+        calledFit =0;
+		board[t][ height[t] ] = player + 1;
+		height[t]++;
 		player = !player;
+
 		return 0;
 	}
+
 	int checkRolls ( bool player )
 	{
 		uchar c = player + 1;
+		uchar d = !player +1;
 		int fit = 0;
+
+		for (int i=0;i<6;i++){
+            if(board[3][i]==c)fit+=6;
+		}
+
+		///vertical
 		for ( int i = 0; i < 7; i++ ) {
-			int cont[2] = {0};
-			bool inroll[2] = {0};
-			for ( int j = 0; j < 7; j++ ) {
-				if ( j < 6 ) {
-					if ( board[i][j] == c ) { //vertical
-						if ( inroll[0] ) {
-							cont[0]++;
-						} else {
-							inroll[0] = true;
-							cont[0] = 1;
-						}
-					} else {
-						inroll[0] = false;
-						cont[0] = 1;
-					}
-					if ( cont[0] == 2 ) { fit++; }
-					if ( cont[0] == 3 ) { fit += 5; }
-					if ( cont[0] == 4 ) { fit += 200; }
+			for ( int j = 0; j < 3; j++ ) {
+               int cont=0;
+                if( board[i][j]==c )cont++;
+                if( board[i][1+j]==c )cont++;
+                if( board[i][2+j]==c )cont++;
+                if( board[i][3+j]==c )cont++;
 
-				}
-				if ( i < 6 ) {
-					if ( board[j][i] == c ) { //horizontal
-						if ( inroll[1] ) {
-							cont[1]++;
-						} else {
-							inroll[1] = true;
-							cont[1] = 1;
+                if( board[i][j]==d )cont-=5;
+                if( board[i][1+j]==d )cont-=5;
+                if( board[i][2+j]==d )cont-=5;
+                if( board[i][3+j]==d )cont-=5;
 
-						}
-					} else {
-						inroll[1] = false;
-						cont[1] = 1;
-					}
-					if ( cont[1] == 2 ) { fit++; }
-					if ( cont[1] == 3 ) { fit += 5; }
-					if ( cont[1] == 4 ) { fit += 200; }
-				}
+                if(cont==2)fit++;
+                if(cont==3)fit+=3;
+                if(cont==4)fit+=201;
+
+			}
+		}
+		//horizontal
+		for ( int i = 0; i < 6; i++ ) {
+			for ( int j = 0; j < 4; j++ ) {
+               int cont=0;
+                if( board[j][i]==c )cont++;
+                if( board[j+1][i]==c )cont++;
+                if( board[j+2][i]==c )cont++;
+                if( board[j+3][i]==c )cont++;
+
+                if( board[j][i]==d )cont-=5;
+                if( board[j+1][i]==d )cont-=5;
+                if( board[j+2][i]==d )cont-=5;
+                if( board[j+3][i]==d )cont-=5;
+                if(cont==2)fit++;
+                if(cont==3)fit+=3;
+                if(cont==4)fit+=202;
+
 			}
 		}
 		for (int i=0;i<4;i++){
@@ -90,9 +99,14 @@ struct Connect: public wag::Game<Mov> {
                 if( board[i+2][j+2]==c )cont++;
                 if( board[i+3][j+3]==c )cont++;
 
+                if( board[i][j]==d )cont-=5;
+                if( board[i+1][j+1]==d )cont-=5;
+                if( board[i+2][j+2]==d )cont-=5;
+                if( board[i+3][j+3]==d )cont-=5;
+
                 if(cont==2)fit++;
                 if(cont==3)fit+=3;
-                if(cont==4)fit+=200;
+                if(cont==4)fit+=204;
 
                 cont=0;
                 if( board[i][5-j]==c )cont++;
@@ -100,16 +114,17 @@ struct Connect: public wag::Game<Mov> {
                 if( board[i+2][3-j]==c )cont++;
                 if( board[i+3][2-j]==c )cont++;
 
+                if( board[i][5-j]==d )cont-=5;
+                if( board[i+1][4-j]==d )cont-=5;
+                if( board[i+2][3-j]==d )cont-=5;
+                if( board[i+3][2-j]==d )cont-=5;
+
+
                 if(cont==2)fit++;
                 if(cont==3)fit+=3;
-                if(cont==4)fit+=200;
-
-
+                if(cont==4)fit+=208;
             }
 		}
-
-
-
 		return fit;
 	}
 
@@ -117,12 +132,13 @@ struct Connect: public wag::Game<Mov> {
 
 	virtual int getFitness()
 	{
+	    calledFit=1;
 		int fitness = 0;
 		//vertical
 		int p1 = checkRolls(0);
 	    int p2 = checkRolls(1);
 
-	    if( p1>200 || p2>200){
+	    if( p1>150 || p2>150){
                 done = true;
 
 	    }
@@ -135,27 +151,52 @@ struct Connect: public wag::Game<Mov> {
 		return player;
 	}
 	;
-	virtual std::list<Mov*> getMoves ( int player )
+	virtual std::list<uchar> getMoves ( int player )
 	{
-	    std::list<Mov*> lista;
+	    if(!calledFit)getFitness();
+
+	    std::list<uchar> lista;
 	    if( done){
             return lista;
         }
 
 		for ( int i = 0; i < 7; i++ ) {
 			if ( height[i] <= 5 ) {
-				lista.push_back ( &moves[i] );
+				lista.push_back ( i );
 			}
 		}
+		/*
+		std::cout<< "MOVES:";
+		for(auto x: lista){
+		    std::cout<< (int)x<<"  ";
+		}
+		std::cout<< "" <<std::endl;
+		*/
 		return lista;
 
 	}
 	;
-	Game<Mov>* clone()
+	Game* clone()
 	{
 		Connect* g = new Connect();
 		*g = *this;
 		return g;
+	}
+	friend std::ostream& operator<<(std::ostream& os, Connect& c){
+	    for (int i=0;i<14;i++){
+            os<< "=";
+	    }
+	    os<<std::endl;
+        for (int j=5;j>=0;j--){
+            for (int i=0;i<7;i++){
+                os<<(int)c.board[i][j]<<" ";
+            }
+            os<<std::endl;
+        }
+        for (int i=0;i<14;i++){
+            os<< "=" ;
+	    }
+        return os;
 
 	}
 };

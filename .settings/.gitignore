@@ -1,2 +1,3 @@
 *.settings.xml
 /ch.hsr.ifs.cute.elevenator.prefs
+*.eclipse.cdt.codan.core.prefs
